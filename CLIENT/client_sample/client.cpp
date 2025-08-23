@@ -1,57 +1,66 @@
 #include "stdafx.h"
-
+#include "TileMap.h"`
+#include "Client.h"
 #include "object.h"
 
-Character avatar;
-unordered_map <int, Character> players;
+void trim(std::string& s) {
+	size_t start = s.find_first_not_of(" \t\n\r\f\v");
+	s = (start == std::string::npos) ? "" : s.substr(start);
 
-BoardBlock white_tile;
-BoardBlock black_tile;
-//(sf::Texture& t, sf::Vector2u imgCount, float switchTime , int x, int y, int scaleX, int scaleY)
-sf::Texture* board;
-sf::Texture* pieces;
+	size_t end = s.find_last_not_of(" \t\n\r\f\v");
+	s = (end == std::string::npos) ? "" : s.substr(0, end + 1);
+}
 
-sf::RenderWindow* g_window;
-sf::Font g_font;
 
-sf::TcpSocket s_socket;
-int g_left_x;
-int g_top_y;
-int g_myid;
-
-void client_initialize()
+void Client::client_initialize()
 {
-	board = new sf::Texture;
-	pieces = new sf::Texture;
-	board->loadFromFile("chessmap.bmp");
-	pieces->loadFromFile("Assets/Samurai/Idle.png");
 	if (false == g_font.loadFromFile("cour.ttf")) {
 		cout << "Font Loading Error!\n";
 		exit(-1);
 	}
-	white_tile = BoardBlock{ *board, sf::Vector2u(1,1), 0,  0,0 };
-	black_tile = BoardBlock{ *board, sf::Vector2u(1,1), 0, 5,5 };
-	avatar = Character{ *pieces, sf::Vector2u(6,1), 0.1f,120.f };
+	if (false == g_krfont.loadFromFile("Jaemin.ttf")) {
+		cout << "Font Loading Error!\n";
+		exit(-1);
+	}
+	avatar = Character{"Samurai"};
 	avatar.move(4, 4);
 }
 
-void client_finish()
-{
-	players.clear();
-	delete board;
-	delete pieces;
-}
-
-void ProcessPacket(char* ptr)
+void Client::ProcessPacket(char* ptr)
 {
 	static bool first_time = true;
-	switch (ptr[1])
+	switch (ptr[2])
 	{
 	case SC_LOGIN_INFO:
 	{
-		SC_LOGIN_INFO_PACKET * packet = reinterpret_cast<SC_LOGIN_INFO_PACKET*>(ptr);
+		SC_LOGIN_INFO_PACKET* packet = reinterpret_cast<SC_LOGIN_INFO_PACKET*>(ptr);
 		g_myid = packet->id;
+		int textureId = packet->visual;
+
+		std::string chName{};
+		switch (textureId)
+		{
+		case 0:
+			chName = "Shinobi";
+			break;
+		case 1:
+			chName = "Samurai";
+			break;
+		case 2:
+			chName = "Fighter";
+			break;
+		default:
+			break;
+		}
+
 		avatar.id = g_myid;
+		avatar.HP = packet->hp;
+		avatar.EXP = packet->exp;
+		avatar.LV = packet->level;
+		avatar.set_HP();
+		avatar.set_LV();
+		avatar.SetScale(0.5, 0.5);
+		avatar.ChangeCharacterAllSprites(chName);
 		avatar.move(packet->x, packet->y);
 		g_left_x = packet->x - SCREEN_WIDTH / 2;
 		g_top_y = packet->y - SCREEN_HEIGHT / 2;
@@ -63,23 +72,71 @@ void ProcessPacket(char* ptr)
 	{
 		SC_ADD_OBJECT_PACKET* my_packet = reinterpret_cast<SC_ADD_OBJECT_PACKET*>(ptr);
 		int id = my_packet->id;
-
 		if (id == g_myid) {
 			avatar.move(my_packet->x, my_packet->y);
 			g_left_x = my_packet->x - SCREEN_WIDTH / 2;
 			g_top_y = my_packet->y - SCREEN_HEIGHT / 2;
+			avatar.LV = my_packet->lv;
+			avatar.set_LV();
+			avatar.SetScale(0.5, 0.5);
 			avatar.show();
 		}
 		else if (id < MAX_USER) {
-			players[id] = Character{ *pieces, sf::Vector2u(6,1), 1.f,1.5f };
+			std::string chName{};
+			int textureId = my_packet->visual;
+			switch (textureId)
+			{
+			case 0:
+				chName = "Shinobi";
+				break;
+			case 1:
+				chName = "Samurai";
+				break;
+			case 2:
+				chName = "Fighter";
+				break;
+			default:
+				break;
+			}
+
+			players[id] = Character{chName};
 			players[id].id = id;
 			players[id].move(my_packet->x, my_packet->y);
-			players[id].set_name(my_packet->name);
+			players[id].SetScale(0.5, 0.5);
+			players[id].LV = my_packet->lv;
+			players[id].set_LV();
+			std::string name = my_packet->name;
+			trim(name);
+			players[id].HP = my_packet->hp;
+			players[id].set_HP();
+			players[id].set_name(name.c_str());
 			players[id].show();
 		}
 		else {
-			players[id] = Character{ *pieces, sf::Vector2u(6,1), 1.f,1.5f };
+			std::string chName{};
+			int textureId = my_packet->visual;
+			switch (textureId)
+			{
+			case 0:
+				chName = "Gotoku";
+				break;
+			case 1:
+				chName = "Onre";
+				break;
+			case 2:
+				chName = "Yurei";
+				break;
+			default:
+				break;
+			}
+			players[id] = Character{ chName };
+			players[id].id = id;
+			players[id].HP = my_packet->hp;
+			players[id].LV = my_packet->lv;
+			players[id].set_LV();
+			players[id].set_HP();
 			players[id].move(my_packet->x, my_packet->y);
+			players[id].SetScale(0.5, 0.5);
 			players[id].set_name(my_packet->name);
 			players[id].show();
 		}
@@ -90,19 +147,95 @@ void ProcessPacket(char* ptr)
 		SC_MOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_MOVE_OBJECT_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
-			avatar.move(my_packet->x, my_packet->y);
-			g_left_x = my_packet->x - SCREEN_WIDTH/2;
-			g_top_y = my_packet->y - SCREEN_HEIGHT/2;
+			TileMap& tileMap = TileMap::getInstance("map.json", "tmw_desert_spacing.png");
+			if (!tileMap.isCollision(my_packet->x, my_packet->y)) {
+				avatar.move(my_packet->x, my_packet->y);
+				g_left_x = my_packet->x - SCREEN_WIDTH / 2;
+				g_top_y = my_packet->y - SCREEN_HEIGHT / 2;
+			}
 		}
 		else {
 			players[other_id].move(my_packet->x, my_packet->y);
 		}
 		break;
 	}
+	case SC_Ressurection:
+	{
+		SC_RESURRECTION_PACKET* p = reinterpret_cast<SC_RESURRECTION_PACKET*> (ptr);
+		int other_id = p->id;
+		if (other_id == g_myid) {
+			avatar.HP = p->hp;
+			avatar.EXP = p->exp;
+			avatar.set_HP();
+			avatar.move(p->x, p->y);
+			g_left_x = p->x - SCREEN_WIDTH / 2;
+			g_top_y = p->y - SCREEN_HEIGHT / 2;
+			avatar.show();
+		}
+		else if (other_id < MAX_USER) {
+			players[other_id].HP = p->hp;
+			players[other_id].EXP = p->exp;
+			players[other_id].move(p->x, p->y);
+			players[other_id].set_HP();
+			players[other_id].show();
+		}
+		else {
+			//30ï¿½ï¿½ ï¿½ï¿½.
+			players[other_id].HP = p->hp;
+			players[other_id].move(p->x, p->y);
+			players[other_id].set_HP();
+			players[other_id].show();
+		}
+	}
+	break;
+	case SC_STAT_CHANGE:
+	{
+		SC_STAT_CHANGE_PACKET* p = reinterpret_cast<SC_STAT_CHANGE_PACKET*>(ptr);
+		int other_id = p->id;
 
+		if (other_id == g_myid) {
+			// It's me
+			int oldExp = avatar.EXP;
+			int oldLv = avatar.LV;
+			int oldHp = avatar.HP;
+
+			avatar.EXP = p->exp;
+			avatar.LV = p->level;
+			avatar.HP = p->hp;
+			avatar.set_HP();
+			avatar.set_LV();
+
+			if (p->hp <= 0)
+				avatar.hide();
+
+			// Log messages for self
+			if (oldHp > p->hp) logChange(L"ì²´ë ¥ ê°ì†Œ: " + std::to_wstring(oldHp - p->hp));
+			else if (oldHp < p->hp) logChange(L"ì²´ë ¥ íšŒë³µ: " + std::to_wstring(p->hp - oldHp));
+			if (oldExp < p->exp) logChange(L"ê²½í—˜ì¹˜ íšë“: " + std::to_wstring(p->exp - oldExp));
+			else if (oldExp > p->exp) logChange(L"ê²½í—˜ì¹˜ ì†ì‹¤: " + std::to_wstring(oldExp - p->exp));
+			if (oldLv < p->level) logChange(L"ë ˆë²¨ ì—…: " + std::to_wstring(p->level));
+
+		}
+		else {
+			// It's another object
+			auto it = players.find(other_id);
+			if (it != players.end()) {
+				Character& player = it->second;
+				player.EXP = p->exp;
+				player.LV = p->level;
+				player.HP = p->hp;
+				player.set_LV();
+				player.set_HP();
+				if (p->hp <= 0)
+					player.hide();
+			}
+		}
+	}
+	break;
 	case SC_REMOVE_OBJECT:
 	{
-		SC_REMOVE_OBJECT_PACKET* my_packet = reinterpret_cast<SC_REMOVE_OBJECT_PACKET*>(ptr);
+		SC_REMOVE_OBJECT_PACKET* my_packet = 
+			reinterpret_cast<SC_REMOVE_OBJECT_PACKET*>(ptr);
 		int other_id = my_packet->id;
 		if (other_id == g_myid) {
 			avatar.hide();
@@ -128,17 +261,19 @@ void ProcessPacket(char* ptr)
 	default:
 		printf("Unknown PACKET type [%d]\n", ptr[1]);
 	}
+
 }
 
-void process_data(char* net_buf, size_t io_byte)
+void Client::process_data(char* net_buf, size_t io_byte)
 {
 	char* ptr = net_buf;
+
 	static size_t in_packet_size = 0;
 	static size_t saved_packet_size = 0;
 	static char packet_buffer[BUF_SIZE];
 
 	while (0 != io_byte) {
-		if (0 == in_packet_size) in_packet_size = ptr[0];
+		if (0 == in_packet_size) in_packet_size = MAKEWORD(ptr[0], ptr[1]);
 		if (io_byte + saved_packet_size >= in_packet_size) {
 			memcpy(packet_buffer + saved_packet_size, ptr, in_packet_size - saved_packet_size);
 			ProcessPacket(packet_buffer);
@@ -152,149 +287,68 @@ void process_data(char* net_buf, size_t io_byte)
 			saved_packet_size += io_byte;
 			io_byte = 0;
 		}
+
 	}
 }
 
-void client_main()
+void Client::client_main()
 {
-	//char net_buf[BUF_SIZE];
-	//size_t	received;
 
-	//auto recv_result = s_socket.receive(net_buf, BUF_SIZE, received);
-	//if (recv_result == sf::Socket::Error)
-	//{
-	//	wcout << L"Recv ¿¡·¯!";
-	//	exit(-1);
-	//}
-	//if (recv_result == sf::Socket::Disconnected) {
-	//	wcout << L"Disconnected\n";
-	//	exit(-1);
-	//}
-	//if (recv_result != sf::Socket::NotReady)
-	//	if (received > 0) process_data(net_buf, received);
+	TileMap& tileMap = TileMap::getInstance("map.json", "tmw_desert_spacing.png");
+
+	char net_buf[BUF_SIZE];
+	size_t received;
+
+	auto recv_result = s_socket.receive(net_buf, BUF_SIZE, received);
+	if (recv_result == sf::Socket::Error) {
+		std::wcout << L"Recv ï¿½ï¿½ï¿½ï¿½!";
+		exit(-1);
+	}
+	if (recv_result == sf::Socket::Disconnected) {
+		std::wcout << L"Disconnected\n";
+		exit(-1);
+	}
+	if (recv_result != sf::Socket::NotReady)
+		if (received > 0) process_data(net_buf, received);
+
+	int offsetX = (g_left_x)*TILE_WIDTH;
+	int offsetY = (g_top_y)*TILE_WIDTH;
 
 
-	for (int i = 0; i < SCREEN_WIDTH; ++i)
-		for (int j = 0; j < SCREEN_HEIGHT; ++j)
-		{
-			int tile_x = i + g_left_x;
-			int tile_y = j + g_top_y;
-			if ((tile_x < 0) || (tile_y < 0)) continue;
-			if (0 ==(tile_x /3 + tile_y /3) % 2) {
-				white_tile.move(TILE_WIDTH * i, TILE_WIDTH * j);
-				white_tile.Draw(*g_window);
-			}
-			else
-			{
-				black_tile.move(TILE_WIDTH * i, TILE_WIDTH * j);
-				black_tile.Draw(*g_window);
-			}
-		}
-	avatar.Draw(*g_window);
-	for (auto& pl : players) pl.second.Draw(*g_window);
+	tileMap.draw(*g_window, offsetX, offsetY);
+
+	avatar.draw();
+	for (auto& pl : players) pl.second.draw();
 	sf::Text text;
+	text.setStyle(1);
 	text.setFont(g_font);
+	text.setFillColor(sf::Color::White);
+	text.setOutlineColor(sf::Color::Black);
+	text.setOutlineThickness(3.f);
 	char buf[100];
-	sprintf_s(buf, "(%d, %d)", avatar.m_x, avatar.m_y);
+	sprintf_s(buf, "EXP: %d", avatar.EXP);
 	text.setString(buf);
 	g_window->draw(text);
-}
 
-void send_packet(void *packet)
-{
-	unsigned char *p = reinterpret_cast<unsigned char *>(packet);
-	size_t sent = 0;
-	s_socket.send(packet, p[0], sent);
-}
-
-int main()
-{
-	wcout.imbue(locale("korean"));
-	/*std::string ipAddr{};
-	std::cout << "ip: ";
-	std::cin >> ipAddr;
-	sf::Socket::Status status = s_socket.connect(ipAddr.c_str(), PORT_NUM);
-	s_socket.setBlocking(false);
-
-	if (status != sf::Socket::Done) {
-		wcout << L"¼­¹ö¿Í ¿¬°áÇÒ ¼ö ¾ø½À´Ï´Ù.\n";
-		exit(-1);
-	}*/
-
-	client_initialize();
-	CS_LOGIN_PACKET p;
-	p.size = sizeof(p);
-	p.type = CS_LOGIN;
-
-	string player_name{ "P" };
-	player_name += to_string(GetCurrentProcessId());
+	sf::Text Logtext;
 	
-	strcpy_s(p.name, player_name.c_str());
-	//send_packet(&p);
-	avatar.set_name(p.name);
+	Logtext.setFont(g_krfont);
+	Logtext.setString(logStr);
+	Logtext.setScale(0.5f, 0.5f);
+	Logtext.setFillColor(sf::Color::White);
+	sf::FloatRect textBounds = Logtext.getGlobalBounds();
+	Logtext.setPosition(WINDOW_WIDTH/2 - textBounds.width - 10,
+						WINDOW_HEIGHT/2 - textBounds.height - 10);
 
-	sf::RenderWindow window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "2D CLIENT");
-	g_window = &window;
-	float deltaTime{};
-	sf::Clock clock;
-	int direction = -1;
-	while (window.isOpen())
-	{
-		deltaTime = clock.restart().asSeconds();
+	sf::RectangleShape background(sf::Vector2f(textBounds.width + 20, 
+											textBounds.height + 30));
 
-		sf::Event event{};
-		while (window.pollEvent(event))
-		{
-			if (event.type == sf::Event::Closed)
-				window.close();
-			if (event.type == sf::Event::KeyPressed) {
-				direction = -1;
-				switch (event.key.code) {
-				case sf::Keyboard::Left:
-					direction = 2;
-					break;
-				case sf::Keyboard::Right:
-					direction = 3;
-					break;
-				case sf::Keyboard::Up:
-					direction = 0;
-					break;
-				case sf::Keyboard::Down:
-					direction = 1;
-					break;
-				case sf::Keyboard:: Q:
-					direction = 4;
-					break;
-				case sf::Keyboard::W:
-					direction = 5;
-					break;
+	background.setPosition(Logtext.getPosition().x - 5, Logtext.getPosition().y - 5);
+	background.setFillColor(sf::Color(0, 0, 0, 150));
 
-				case sf::Keyboard::Escape:
-					window.close();
-					break;
-				}
-				if (-1 != direction && direction <= 3) {
-					CS_MOVE_PACKET p;
-					p.size = sizeof(p);
-					p.type = CS_MOVE;
-					p.direction = direction;
-					//send_packet(&p);
-				}
-
-			}
-			if (event.type == sf::Event::KeyReleased) {
-				direction = -1;  // ¹æÇâ ÃÊ±âÈ­
-			}
-		}
-		
-		avatar.Update(deltaTime, direction);
-
-		window.clear(sf::Color(150,150, 150));
-		client_main();
-		avatar.Draw(*g_window);
-		window.display();
+	g_window->draw(background);
+	if (m_mess_end_time < chrono::system_clock::now()) {
+		Logtext.setString(" ");
 	}
-	client_finish();
-
-	return 0;
+		g_window->draw(Logtext);
 }

@@ -1,143 +1,70 @@
-#include "Object.h"
+#include "object.h"
 
-Character::Character(sf::Texture& t, sf::Vector2u imgCount, float switchTime, float speed)
-	:animation(t, imgCount, switchTime), speed{ speed }, row{}, faceRight{}
+void OBJECT::draw()
 {
-	body.setSize(sf::Vector2f(150, 150));
-	body.setPosition(4,4);
-	body.setTexture(&t);
-	t.setRepeated(true);
-
-	idleTexture = new sf::Texture;
-	walkTexture = new sf::Texture;
-	attack_1Texture = new sf::Texture;
-	attack_2Texture = new sf::Texture;
-
-	idleTexture->loadFromFile("Assets/Samurai/Idle.png");
-	walkTexture->loadFromFile("Assets/Samurai/Walk.png");
-	attack_1Texture->loadFromFile("Assets/Samurai/Attack_1.png");
-	attack_2Texture->loadFromFile("Assets/Samurai/Attack_2.png");
-
-	isSpriteUpdated = false;
-}
-
-Character::~Character()
-{}
-
-void Character::move(int x, int y)
-{
-	pos.x = x;
-	pos.y = y;
-	body.move(pos);
-}
-
-void Character::Update(float deltaTime, int dir)
-{
-	sf::Vector2f movement(0.f, 0.f);
-	if (isSpriteUpdated) {
-		if (stat == STAT::WALK) {
-			animation.ChangeSprite(*walkTexture, sf::Vector2u(8, 1), 0.1f);
-			body.setTexture(walkTexture);
-			walkTexture->setRepeated(true);
-		}
-		if (stat == STAT::IDLE) {
-			animation.ChangeSprite(*idleTexture, sf::Vector2u(6, 1), 0.1f);
-			body.setTexture(idleTexture);
-			idleTexture->setRepeated(true);
-		}
-		if (stat == STAT::ATTACK_1) {
-			animation.ChangeSprite(*attack_1Texture, sf::Vector2u(6, 1), 0.05f);
-			body.setTexture(attack_1Texture);
-			attack_1Texture->setRepeated(true);
-		}
-		if (stat == STAT::ATTACK_2) {
-			animation.ChangeSprite(*attack_2Texture, sf::Vector2u(4, 1), 0.05f);
-			body.setTexture(attack_2Texture);
-			attack_2Texture->setRepeated(true);
-		}
-		isSpriteUpdated = false;
-	}
-	
-	updateCharacterState(movement, deltaTime, dir);
-	if (movement.x == 0) {
-		row = 0;
+	if (false == m_showing) return;
+	float rx = (m_x - g_left_x) * TILE_WIDTH + 1;
+	float ry = (m_y - g_top_y) * TILE_WIDTH + 1;
+	m_sprite.setPosition(rx, ry);
+	g_window->draw(m_sprite);
+	auto size = m_name.getGlobalBounds();
+	if (m_mess_end_time < chrono::system_clock::now()) {
+		m_name.setPosition(rx + 20 - size.width / 2, ry + 35);
+		g_window->draw(m_name);
 	}
 	else {
-		row = 1;
-		if (movement.x > 0.f) faceRight = true;
-		else faceRight = false;
+		m_chat.setPosition(rx + 32 - size.width / 2, ry - 20);
+		g_window->draw(m_chat);
 	}
+	auto HPsize = m_hpText.getGlobalBounds();
+	m_hpText.setPosition(rx + 20 - (HPsize.width / 2), ry - 20);
+	g_window->draw(m_hpText);
 
-	animation.Update(row, deltaTime, faceRight);
-	body.setTextureRect(animation.uvRect);
-	pos = movement;
-	body.move(movement);
+
+	auto LVsize = m_LVText.getGlobalBounds();
+	m_LVText.setPosition(rx + 20 - (LVsize.width / 2), ry - 35);
+	g_window->draw(m_LVText);
 }
-void Character::updateCharacterState(sf::Vector2f& movement, float deltaTime, int dir)
-{
 
-	switch (dir) {
-	case 2:
-		new_stat = STAT::WALK;
-		movement.x -= speed * deltaTime;
+void OBJECT::set_name(const char str[])
+{
+	m_name.setFont(g_font);
+	m_name.setScale(0.5f, 0.5f);
+	m_name.setString(str);
+	playerID = str;
+	if (id < MAX_USER) m_name.setFillColor(sf::Color(0, 0, 255));
+	else m_name.setFillColor(sf::Color(255, 0, 0));
+	m_name.setStyle(sf::Text::Bold);
+}
+
+void OBJECT::set_chat(const char str[])
+{
+	m_chat.setFont(g_font);
+	m_chat.setString(str);
+	m_chat.setFillColor(sf::Color(255, 255, 255));
+	m_chat.setStyle(sf::Text::Bold);
+	m_chat.setScale(0.4,0.4);
+	m_mess_end_time = chrono::system_clock::now() + chrono::seconds(1);
+}
+
+void Character::updateSprite()
+{
+	switch (stat) {
+	case STAT::IDLE:
+		animation.ChangeSprite(*m_textures[0], sf::Vector2u(6, 1), 0.1f);
+		body.setTexture(m_textures[0]);
 		break;
-	case 3:
-		new_stat = STAT::WALK;
-		movement.x += speed * deltaTime;
+	case STAT::WALK:
+		animation.ChangeSprite(*m_textures[1], sf::Vector2u(8, 1), 0.1f);
+		body.setTexture(m_textures[1]);
 		break;
-	case 0:
-		new_stat = STAT::WALK;
-		movement.y -= speed * deltaTime;
+	case STAT::ATTACK_1:
+		animation.ChangeSprite(*m_textures[2], sf::Vector2u(6, 1), 0.05f);
+		body.setTexture(m_textures[2]);
 		break;
-	case 1:
-		new_stat = STAT::WALK;
-		movement.y += speed * deltaTime;
-		break;
-	case 4:
-		new_stat = STAT::ATTACK_1;
-		break;
-	case 5:
-		new_stat = STAT::ATTACK_2;
-		break;
-	default:
-		new_stat = STAT::IDLE;
+	case STAT::ATTACK_2:
+		animation.ChangeSprite(*m_textures[3], sf::Vector2u(4, 1), 0.05f);
+		body.setTexture(m_textures[3]);
 		break;
 	}
-	
-	if (new_stat != stat) {
-		isSpriteUpdated = true;
-		stat = new_stat;
-	}
-
-
-}
-
-void Character::Draw(sf::RenderWindow& window)
-{
-	if (false == m_showing)
-	window.draw(body);
-}
-
-BoardBlock::BoardBlock(sf::Texture& t, sf::Vector2u imgCount, float switchTime, int x, int y)
-	: animation(t, imgCount, switchTime)
-{
-	body.setTexture(&t);
-	body.setTextureRect(sf::IntRect(x, y, TILE_WIDTH, TILE_WIDTH));
-	body.setPosition(0, 0);
-}
-
-void BoardBlock::move(int x, int y)
-{
-	pos.x = x;
-	pos.y = y;
-	body.move(pos);
-}
-
-void BoardBlock::Update(float deltaTime, int dir)
-{
-}
-
-void BoardBlock::Draw(sf::RenderWindow& window)
-{
-	window.draw(body);
 }

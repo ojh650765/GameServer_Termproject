@@ -4,13 +4,13 @@ AnimateSprite::AnimateSprite(sf::Texture& texture, sf::Vector2u imgCount, float 
 	:imgCount{ imgCount }, switchTime{ switchTime }, totalTime{}
 {
 	currentImage.x = 0;
+	currentImage.y = 1;
 	uvRect.width = texture.getSize().x / float(imgCount.x);
 	uvRect.height = texture.getSize().y / float(imgCount.y);
 }
 
-void AnimateSprite::Update(int row, float deltTime, bool faceRight)
+void AnimateSprite::Update(float deltTime, bool faceRight)
 {
-	currentImage.y = row;
 	totalTime += deltTime;
 	if (totalTime >= switchTime) {
 		totalTime -= switchTime;
