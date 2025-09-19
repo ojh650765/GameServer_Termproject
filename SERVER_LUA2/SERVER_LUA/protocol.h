@@ -5,7 +5,7 @@ constexpr int BUF_SIZE = 512;
 constexpr int CHAT_SIZE = 300;
 
 constexpr int MAX_USER = 10000;
-constexpr int MAX_NPC = 200000;
+constexpr int MAX_NPC = 20000;
 
 constexpr int W_WIDTH = 2000;
 constexpr int W_HEIGHT = 2000;
@@ -13,8 +13,8 @@ constexpr int W_HEIGHT = 2000;
 constexpr int VIEW_RANGE = 10;
 constexpr int ATTACK_RANGE = 2;
 
-// Sector
-constexpr int SECTOR_SIZE = VIEW_RANGE * 2;
+
+constexpr int SECTOR_SIZE = 50;
 constexpr int SECTOR_W_COUNT = W_WIDTH / SECTOR_SIZE;
 constexpr int SECTOR_H_COUNT = W_HEIGHT / SECTOR_SIZE;
 
@@ -23,9 +23,9 @@ constexpr int SECTOR_H_COUNT = W_HEIGHT / SECTOR_SIZE;
 constexpr char CS_LOGIN = 0;
 constexpr char CS_MOVE = 1;
 constexpr char CS_CHAT = 2;
-constexpr char CS_ATTACK = 3;			// 4 ���� ����
-constexpr char CS_TELEPORT = 4;			// RANDOM�� ��ġ�� Teleport, Stress Test�� �� Hot Spot������ ���ϱ� ���� ����
-constexpr char CS_LOGOUT = 5;			// Ŭ���̾�Ʈ���� ���������� ������ �����ϴ� ��Ŷ
+constexpr char CS_ATTACK = 3;			
+constexpr char CS_TELEPORT = 4;			
+constexpr char CS_LOGOUT = 5;
 
 constexpr char SC_LOGIN_INFO = 2;
 constexpr char SC_LOGIN_FAIL = 3;
@@ -51,7 +51,7 @@ struct CS_MOVE_PACKET {
 };
 
 struct CS_CHAT_PACKET {
-	unsigned short size;			// ũ�Ⱑ �����̴�, mess�� ������ size�� ������.
+	unsigned short size;
 	char	type;
 	char	mess[CHAT_SIZE];
 };
@@ -75,7 +75,7 @@ struct CS_ATTACK_PACKET {
 struct SC_LOGIN_INFO_PACKET {
 	unsigned short size;
 	char	type;
-	int		visual;				// ����, �������� ������ �� ���
+	int		visual;
 	int		id;
 	int		hp;
 	int		max_hp;
@@ -90,7 +90,7 @@ struct SC_ADD_OBJECT_PACKET {
 	int		id;
 	int		hp;
 	int		lv;
-	int		visual;				// ��� ���� OBJECT�ΰ��� ����
+	int		visual;
 	short	x, y;
 	char	name[NAME_SIZE];
 };

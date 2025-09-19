@@ -6,7 +6,6 @@
 
 using namespace std;
 
-// Forward declaration for database function
 void ConnectDataBase();
 
 enum COMP_TYPE {
@@ -38,17 +37,17 @@ public:
 	}
 };
 
-// Memory Pool for OVER_EXP
+
 concurrency::concurrent_queue<OVER_EXP*> over_exp_pool;
 
 void InitializeOverExpPool()
 {
-	for (int i = 0; i < 200000; ++i) { // Pre-allocate 200,000 OVER_EXP objects
+	for (int i = 0; i < 200000; ++i) {
 		over_exp_pool.push(new OVER_EXP);
 	}
 }
 
-// Sector Data Structures
+
 array<array<list<int>, SECTOR_W_COUNT>, SECTOR_H_COUNT> sectors;
 array<array<mutex, SECTOR_W_COUNT>, SECTOR_H_COUNT> sector_lock;
 
@@ -88,7 +87,7 @@ public:
 	mutex	_vll;
 	SOCKET _socket;
 	short	x, y;
-	short	_sector_x, _sector_y; // Sector coordinates
+	short	_sector_x, _sector_y;
 	short	init_x, init_y;
 	char	_name[NAME_SIZE];
 	int		_prev_remain;
@@ -153,6 +152,12 @@ HANDLE h_iocp;
 array<SESSION, MAX_USER + MAX_NPC> objects;
 SOCKET g_s_socket, g_c_socket;
 OVER_EXP g_a_over;
+
+void SetSocketOptions(SOCKET sock)
+{
+	int opt_val = 1;
+	setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char*)&opt_val, sizeof(opt_val));
+}
 
 bool can_see(int from, int to);
 void get_near_objects(int obj_id, unordered_set<int>& near_list);
@@ -229,7 +234,7 @@ void handleReadDB(SQLHSTMT hstmt, SQLHDBC hdbc, QueryTask queryTask)
 			objects[index]._visual = UserVisual;
 		}
 		else if (retcode == SQL_NO_DATA) {
-			// User not found, create new character
+			
 			strcpy_s(objects[index]._name, queryTask.client_name);
 			objects[index].x = rand() % W_WIDTH;
 			objects[index].y = rand() % W_HEIGHT;
@@ -348,7 +353,7 @@ bool can_Attack(int from, int to)
 	return abs(objects[from].y - objects[to].y) <= ATTACK_RANGE;
 }
 
-// Sector Management Functions
+
 void add_to_sector(int obj_id, int sector_x, int sector_y) {
 	sector_lock[sector_y][sector_x].lock();
 	sectors[sector_y][sector_x].push_back(obj_id);
@@ -565,14 +570,16 @@ void process_packet(int c_id, char* packet)
 
 		unordered_set<int> near_list;
 		get_near_objects(c_id, near_list);
-
-		// Check for collision with NPCs after moving
+			
 		for (int target_id : near_list) {
 			if (is_npc(target_id)) {
 				if (objects[c_id].x == objects[target_id].x && objects[c_id].y == objects[target_id].y) {
+
 					int& player_hp = objects[c_id].hp;
+
 					if (player_hp > 0) {
 						player_hp -= 10; // Damage
+
 						if (player_hp <= 0) {
 							player_hp = 0;
 							add_timer(c_id, EV_RESURRECTION, 5000);
@@ -581,6 +588,7 @@ void process_packet(int c_id, char* packet)
 						unordered_set<int> notify_list;
 						get_near_objects(c_id, notify_list);
 						notify_list.insert(c_id);
+						
 						for (int id_to_notify : notify_list) {
 							if (is_pc(id_to_notify)) {
 								objects[id_to_notify].send_change_state_packet(c_id);
@@ -627,7 +635,7 @@ void process_packet(int c_id, char* packet)
 			}
 		}
 	}
-				break;
+		break;
 	case CS_ATTACK:
 	{
 		unordered_set<int> near_list;
@@ -635,13 +643,12 @@ void process_packet(int c_id, char* packet)
 
 		for (auto& target_id : near_list) {
 			if (can_Attack(c_id, target_id)) {
-				// Simplified attack logic
+				
 				int& target_hp = objects[target_id].hp;
-				target_hp -= 20; // Fixed damage for now
-
+				target_hp -= 20;
 				if (target_hp <= 0) {
 					target_hp = 0;
-					// Handle death
+					
 					if (is_npc(target_id)) {
 						objects[c_id].exp += objects[target_id].lv * 10;
 						while (objects[c_id].exp >= objects[c_id].lv * 100) {
@@ -650,7 +657,7 @@ void process_packet(int c_id, char* packet)
 							objects[c_id].FullHP += 10;
 							objects[c_id].hp = objects[c_id].FullHP;
 						}
-						add_timer(target_id, EV_RESURRECTION, 5000); // Resurrect NPC after 5 seconds
+						add_timer(target_id, EV_RESURRECTION, 5000); 
 					}
 					else {
 						// Player kill
@@ -686,21 +693,26 @@ void disconnect(int c_id)
 	objects[c_id]._vl.lock();
 	unordered_set <int> vl = objects[c_id]._view_list;
 	objects[c_id]._vl.unlock();
+	
 	for (auto& p_id : vl) {
 		if (is_npc(p_id)) continue;
+		
 		auto& pl = objects[p_id];
 		{
 			lock_guard<mutex> ll(pl._s_lock);
 			if (ST_INGAME != pl._state) continue;
 		}
+		
 		if (pl._id == c_id) continue;
 		pl.send_remove_player_packet(c_id);
 	}
 	if (ST_INGAME == objects[c_id]._state) {
 		if (false == objects[c_id]._is_npc) {
+			
 			QueryTask qt;
 			size_t copyLen = min(strlen(objects[c_id]._name), sizeof(qt.client_name) - 1);
 			std::copy(objects[c_id]._name, objects[c_id]._name + copyLen, qt.client_name);
+
 			qt.client_name[copyLen] = '\0';
 			qt.index = c_id;
 			qt.type = OP_WriteDB;
@@ -721,6 +733,7 @@ void do_npc_random_move(int npc_id)
 
 	int x = npc.x;
 	int y = npc.y;
+	
 	switch (rand() % 4) {
 	case 0: if (y > 0) y--; break;
 	case 1: if (y < W_HEIGHT - 1) y++; break;
@@ -746,17 +759,16 @@ void do_npc_random_move(int npc_id)
 	for (auto pl_id : near_list) {
 		if (is_pc(pl_id)) {
 			objects[pl_id].send_move_packet(npc_id);
-
-			// Check for collision and apply damage
+			
 			if (npc.x == objects[pl_id].x && npc.y == objects[pl_id].y) {
 				int& player_hp = objects[pl_id].hp;
 				if (player_hp > 0) {
-					player_hp -= 10; // Damage
+					player_hp -= 10;
 					if (player_hp <= 0) {
 						player_hp = 0;
 						add_timer(pl_id, EV_RESURRECTION, 5000);
 					}
-					
+
 					unordered_set<int> notify_list;
 					get_near_objects(pl_id, notify_list);
 					notify_list.insert(pl_id);
@@ -793,6 +805,7 @@ void do_player_resurrection(int c_id)
 
 	int new_sector_x = objects[c_id].x / SECTOR_SIZE;
 	int new_sector_y = objects[c_id].y / SECTOR_SIZE;
+	
 	if (objects[c_id]._sector_x != new_sector_x || objects[c_id]._sector_y != new_sector_y) {
 		remove_from_sector(c_id, objects[c_id]._sector_x, objects[c_id]._sector_y);
 		add_to_sector(c_id, new_sector_x, new_sector_y);
@@ -871,7 +884,7 @@ void logic_thread()
             break;
         case LogicTaskType::NPC_MOVE:
             do_npc_random_move(task.c_id);
-            add_timer(task.c_id, EV_RANDOM_MOVE, 1000);
+            add_timer(task.c_id, EV_RANDOM_MOVE, 2000);
             break;
         case LogicTaskType::NPC_RUNAWAY:
             if (can_see(task.c_id, objects[task.c_id]._target_obj)) {
@@ -883,12 +896,16 @@ void logic_thread()
             bool result = false;
             objects[task.c_id]._ll.lock();
             auto L = objects[task.c_id]._L;
+        		
             lua_getglobal(L, "event_player_move");
             lua_pushnumber(L, task.target_id);
+        		
             lua_pcall(L, 1, 1, 0);
             result = lua_toboolean(L, -1);
             lua_pop(L, 1);
+        		
             objects[task.c_id]._ll.unlock();
+        		
             if (result) {
                 objects[task.c_id]._target_obj = task.target_id;
                 add_timer(task.c_id, EV_RUN_AWAY, 3000);
@@ -908,6 +925,7 @@ void logic_thread()
         case LogicTaskType::HEAL:
             player_heal_event(task.c_id);
             break;
+        	
         case LogicTaskType::DISCONNECT:
             disconnect(task.c_id);
             break;
@@ -921,8 +939,10 @@ void worker_thread(HANDLE h_iocp)
 		DWORD num_bytes;
 		ULONG_PTR key;
 		WSAOVERLAPPED* over = nullptr;
+		
 		BOOL ret = GetQueuedCompletionStatus(h_iocp, &num_bytes, &key, &over, INFINITE);
 		OVER_EXP* ex_over = reinterpret_cast<OVER_EXP*>(over);
+
 		if (FALSE == ret) {
 			if (ex_over->_comp_type == OP_ACCEPT) cout << "Accept Error";
 			else {
@@ -934,6 +954,7 @@ void worker_thread(HANDLE h_iocp)
                     std::lock_guard<std::mutex> lock(logic_queue_lock);
                     logic_queue.push(task);
                 }
+				
                 logic_queue_cv.notify_one();
                 if (ex_over->_comp_type == OP_SEND) over_exp_pool.push(ex_over);
                 continue;
@@ -949,6 +970,7 @@ void worker_thread(HANDLE h_iocp)
 				logic_queue.push(task);
 			}
 			logic_queue_cv.notify_one();
+			
 			if (ex_over->_comp_type == OP_SEND) over_exp_pool.push(ex_over);
 			continue;
 		}
@@ -961,12 +983,16 @@ void worker_thread(HANDLE h_iocp)
 					lock_guard<mutex> ll(objects[client_id]._s_lock);
 					objects[client_id]._state = ST_ALLOC;
 				}
+				
 				objects[client_id].x = 0;
 				objects[client_id].y = 0;
 				objects[client_id]._id = client_id;
 				objects[client_id]._name[0] = 0;
 				objects[client_id]._prev_remain = 0;
 				objects[client_id]._socket = g_c_socket;
+				
+				SetSocketOptions(g_c_socket);
+
 				CreateIoCompletionPort(reinterpret_cast<HANDLE>(g_c_socket),
 					h_iocp, client_id, 0);
 				objects[client_id].do_recv();
@@ -1153,7 +1179,7 @@ void InitializeNPC()
 		sprintf_s(objects[i]._name, NAME_SIZE, "%s", monName.c_str());
 		objects[i]._state = ST_INGAME;
 		add_to_sector(i, objects[i].x / SECTOR_SIZE, objects[i].y / SECTOR_SIZE);
-		add_timer(i, EV_RANDOM_MOVE, 1000);
+		add_timer(i, EV_RANDOM_MOVE, 2000);
 
 		auto L = objects[i]._L = luaL_newstate();
 		luaL_openlibs(L);
@@ -1184,6 +1210,7 @@ void do_timer()
 			}
 			OVER_EXP* ov;
 			if (!over_exp_pool.try_pop(ov)) ov = new OVER_EXP;
+			
 			switch (ev.et) {
 			case EV_RANDOM_MOVE:
 				ov->_comp_type = OP_NPC_MOVE;
@@ -1198,6 +1225,7 @@ void do_timer()
 				ov->_comp_type = OP_HEAL;
 				break;
 			}
+			
 			PostQueuedCompletionStatus(h_iocp, 1, ev.obj_id, &ov->_over);
 			continue;
 		}
@@ -1211,13 +1239,16 @@ int main()
 	WSADATA WSAData;
 	WSAStartup(MAKEWORD(2, 2), &WSAData);
 	g_s_socket = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+
 	SOCKADDR_IN server_addr;
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(PORT_NUM);
 	server_addr.sin_addr.S_un.S_addr = INADDR_ANY;
+	
 	bind(g_s_socket, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr));
 	listen(g_s_socket, SOMAXCONN);
+	
 	SOCKADDR_IN cl_addr;
 	int addr_size = sizeof(cl_addr);
 
@@ -1227,12 +1258,14 @@ int main()
 	CreateIoCompletionPort(reinterpret_cast<HANDLE>(g_s_socket), h_iocp, 9999, 0);
 	g_c_socket = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
 	g_a_over._comp_type = OP_ACCEPT;
+	
 	AcceptEx(g_s_socket, g_c_socket, g_a_over._send_buf, 0, addr_size + 16, addr_size + 16, 0, &g_a_over._over);
 
 	thread db_thread{ ConnectDataBase };
-
+	
 	vector <thread> worker_threads;
 	int num_threads = std::thread::hardware_concurrency();
+	
 	for (int i = 0; i < num_threads; ++i)
 		worker_threads.emplace_back(worker_thread, h_iocp);
 
@@ -1241,11 +1274,13 @@ int main()
 		logic_threads.emplace_back(logic_thread);
 
 	thread timer_thread{ do_timer };
+	
 	timer_thread.join();
 	for (auto& th : worker_threads)
 		th.join();
 	for (auto& th : logic_threads)
 		th.join();
+	
 	db_thread.join();
 	closesocket(g_s_socket);
 	WSACleanup();
